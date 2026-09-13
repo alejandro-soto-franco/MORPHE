@@ -1,0 +1,89 @@
+[project]
+name = "morphe"
+version = "0.1.0"
+description = "Reproducible workflow for MORPHE: latent + pixel diffusion for spatial-omics tissue maps"
+requires-python = ">=3.11,<3.13"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/morphe"]
+
+[tool.ruff]
+line-length = 110
+src = ["src", "workflow/scripts", "tests"]
+# Snakemake's `script:` directive injects a `snakemake` global at run time;
+# it is never actually undefined when these scripts run.
+builtins = ["snakemake"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pyrefly]
+project_includes = ["src", "workflow/scripts", "tests"]
+search_path = ["src"]
+
+[tool.pixi.workspace]
+channels = ["conda-forge", "bioconda"]
+# A plain "linux-64" here would also work for CI (CPU-only runners still
+# solve fine against a claimed CUDA capability); the explicit cuda pin
+# matches this machine's driver (610.57.04, CUDA 13.3 toolkit) and the
+# known-good pin used elsewhere on it (see ~/md pixi.toml).
+platforms = [{ name = "linux-64-cuda", platform = "linux-64", cuda = "12.8" }]
+
+[tool.pixi.dependencies]
+python = "3.11.*"
+# Matches this box's driver (610.57.04) and CUDA 13.3 toolkit; sm_120
+# (RTX 5060) verified working at this pin elsewhere on this machine (see
+# ~/md pixi.toml). Kept below 13.3 deliberately, not because 13.3 fails.
+cuda-version = ">=12.8,<13.3"
+pytorch-gpu = ">=2.4"
+torchvision = "*"
+numpy = "<2"
+pandas = "*"
+pillow = "*"
+scipy = "*"
+scikit-learn = "*"
+matplotlib-base = "*"
+seaborn = "*"
+opencv = "*"
+tqdm = "*"
+pyyaml = "*"
+snakemake = "*"
+pytest = "*"
+huggingface_hub = "*"
+
+[tool.pixi.pypi-dependencies]
+morphe = { path = ".", editable = true }
+diffusers = "==0.31.*"
+accelerate = ">=0.34"
+transformers = ">=4.44"
+safetensors = "*"
+peft = ">=0.13"
+lpips = "*"
+torch-geometric = "*"
+
+[tool.pixi.feature.lint.dependencies]
+ruff = "*"
+pyrefly = "*"
+
+[tool.pixi.environments]
+default = { features = [], solve-group = "default" }
+lint = { features = ["lint"], solve-group = "default" }
+
+[tool.pixi.tasks]
+smoke = "OMP_NUM_THREADS=6 nice -n 19 snakemake -s workflow/Snakefile --configfile config/smoke.yaml --cores 6 all"
+# workflow/run_all.sh: pixi's own task-string tokenizer mis-splits a bare
+# `--resources gpu=1` argument (needed since the single 8 GB RTX 5060 can
+# only run one GPU rule at a time), so it lives in a real script instead.
+all = "bash workflow/run_all.sh"
+test = "pytest tests -q"
+
+[tool.pixi.feature.lint.tasks]
+# PYREFLY_CONFIG (a global env var used by this machine's `uvc` wrapper for
+# uv/venv projects) would otherwise override this project's own
+# [tool.pyrefly] config and resolve imports against an unrelated global venv
+# rather than this pixi environment; unset it here.
+lint = "ruff check src workflow/scripts tests && ruff format --check src workflow/scripts tests && env -u PYREFLY_CONFIG pyrefly check src workflow/scripts tests"
