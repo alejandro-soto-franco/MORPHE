@@ -8,6 +8,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # The locked environment targets CUDA builds of PyTorch. The runner has no
+      # GPU, so declare the virtual package; tests and the smoke run use the CPU.
+      CONDA_OVERRIDE_CUDA: "12.8"
     steps:
       - uses: actions/checkout@v4
 
