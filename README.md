@@ -16,14 +16,14 @@ of view, inpaint damaged regions, and impute across 2D and 3D gaps.
 
 ## Repository layout
 
-- `src/morphe/` — the library: datasets, models, training loops, inference
+- `src/morphe/`: the library (datasets, models, training loops, inference
   engines, embeddings (GCN classifier + autoencoder), evaluation metrics,
-  finetune baselines and preprocessing.
-- `workflow/Snakefile` + `workflow/rules/*.smk` — one rule per pipeline step.
-- `config/config.yaml` / `config/smoke.yaml` — every path, seed, pretrained
+  finetune baselines and preprocessing).
+- `workflow/Snakefile` and `workflow/rules/*.smk`: one rule per pipeline step.
+- `config/config.yaml` and `config/smoke.yaml`: every path, seed, pretrained
   model id and hyperparameter.
-- `tests/` — unit tests plus a Snakemake dry-run check on both configs.
-- `Assets/` — the six real sample region images used for the flagship
+- `tests/`: unit tests plus a Snakemake dry-run check on both configs.
+- `Assets/`: the six real sample region images used for the flagship
   reproduction below, and the README's figures.
 
 ## Quick start
@@ -43,8 +43,8 @@ live.
 
 The DAG below shows the rules wired into `rule all` (the outpainting/2D-
 imputation reproduction) plus the other pipelines, defined but run
-independently since their inputs are outside this repository's data budget
-(see "What each pipeline needs" below).
+independently since their inputs exceed what this repository downloads
+(see "Pipeline data requirements" below).
 
 ```mermaid
 graph TD
@@ -69,15 +69,15 @@ graph TD
     end
 ```
 
-## What each pipeline needs
+## Pipeline data requirements
 
 | Pipeline | Wired into `all`? | Data it needs | Status here |
 |---|---|---|---|
 | Outpainting / 2D imputation | yes | six sample region images (`Assets/sample_regions`, shipped) + published checkpoint | run end to end on real data and the published weights |
 | Evaluation metrics | yes | the above outputs | four of five metrics run structurally only; see below |
-| Embeddings (GCN + autoencoder) | no | the full 2.6M-cell CODEX table | DAG defined; table exceeds the data budget |
-| Arbitrary inpainting | no | a training region set (own held-out split) | DAG defined; no published checkpoint for this use case |
-| 3D imputation | no | a MERFISH whole-brain z-stack | DAG defined; outside the data budget |
+| Embeddings (GCN + autoencoder) | no | the full 2.6M-cell CODEX table | DAG defined; the table is far larger than this fork downloads |
+| Arbitrary inpainting | no | a training region set (own excluded-region split) | DAG defined; no published checkpoint for this use case |
+| 3D imputation | no | a MERFISH whole-brain z-stack | DAG defined; not downloaded here |
 | Pixel-diffusion decoder | no | a precomputed (latent, image) index | DAG defined; needs a training run to produce first |
 | Preprocessing (resolution reduction) | no | the exact pre-merged CSV the notebook used | not published; see below |
 | SD2 / FluxFill finetune baselines | no | a training image set | DAG defined; baselines for comparison, not MORPHE itself |
@@ -102,7 +102,7 @@ graph TD
 | Pixel-diffusion decoder | [Hickey-Lab/MORPHE_CODEX_PixelDiffusion](https://huggingface.co/Hickey-Lab/MORPHE_CODEX_PixelDiffusion) |
 
 Only the outpainting/2D-imputation repository is downloaded here (three of
-its files: the UNet, CoordEncoder and CondEncoder; the rest is optimizer/RNG
+its files: the UNet, CoordEncoder and CondEncoder; the rest is optimiser/RNG
 state). `download_stage1_checkpoint` verifies each against the SHA-256
 committed in `config/config.yaml`.
 
@@ -139,7 +139,7 @@ Five confirmed bugs, each its own commit with a regression test:
    fresh checkpoint. See `morphe.masks`.
 2. **Nonexistent validation directory.** `Latent_Diffusion_Trainer.py:22`
    opened a hardcoded `val_data` directory that does not exist in the
-   repository. Train/val are now an explicit, region-held-out split recorded
+   repository. Train/val are now an explicit, region-exclusion split recorded
    in config (`outpainting_2d_imputation.split`; see
    `morphe.datasets.stage1_dataset.split_by_region`). The same data-leakage
    pattern (`Train_Arbitrary_Inpainting.ipynb`'s `OutpaintTrainer_new` built
@@ -183,8 +183,8 @@ noted at its port site):
   `no_mask`. `morphe.inference.pixel_decoder.precompute_latents` takes an
   already-constructed dataset instead.
 - **Division by a possibly-zero range.** `embed_to_rgb`'s min-max scaling
-  divides by `max - min` per channel; the guard against a zero range was
-  commented out upstream. Restored.
+  divides by `max - min` per channel; the line that sets a zero range to a
+  small epsilon before dividing was commented out upstream. Restored.
 - **`CoordEncoder`'s checkpoint layout does not match its own training
   module.** `Train/models/coord_encoder.py` defines `CoordEncoder` as a class
   wrapping its layers in `self.net`, but the published checkpoint
@@ -215,7 +215,7 @@ Intentional deviations, not bug fixes:
 See `config/config.yaml` for the full schema (every section is commented at
 its use site) and `config/smoke.yaml` for the tiny/synthetic variant. Notable
 keys: `pretrained` (the SD1.5 mirror and pin), `mask_axis_convention`,
-`outpainting_2d_imputation.split` (the held-out region set),
+`outpainting_2d_imputation.split` (the excluded region set),
 `outpainting_2d_imputation.published_checkpoint` (repo + per-file SHA-256),
 `evaluation.z_min`/`z_max` (the trained autoencoder's recorded latent range).
 
