@@ -1,0 +1,32 @@
+"""MORPHE workflow entry point.
+
+Run with ``pixi run smoke`` (synthetic fixture, CPU, seconds) or
+``pixi run all`` (real data + published weights, GPU); both load this same
+Snakefile with a different ``--configfile``, so the rule bodies are shared.
+``config["mode"]`` ("smoke" or "full") selects which final targets
+``rule all`` requests, since the smoke run must not require the multi-
+gigabyte published checkpoint or real region images.
+"""
+
+import os
+
+configfile: "config/config.yaml"
+
+include: "rules/preprocessing.smk"
+include: "rules/embeddings.smk"
+include: "rules/outpainting_2d_imputation.smk"
+include: "rules/evaluation.smk"
+include: "rules/pixel_decoder.smk"
+include: "rules/arbitrary_inpainting.smk"
+include: "rules/imputation_3d.smk"
+include: "rules/finetune.smk"
+
+if config.get("mode", "full") == "smoke":
+    rule all:
+        input:
+            rules.train_smoke_outpainting_2d_imputation.output,
+else:
+    rule all:
+        input:
+            rules.train_smoke_outpainting_2d_imputation.output,
+            rules.evaluate_outpainting_2d_imputation.output,

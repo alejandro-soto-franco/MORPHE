@@ -1,0 +1,188 @@
+# MORPHE workflow configuration.
+#
+# Every path, seed, pretrained model id and download URL the original
+# notebooks hardcoded lives here. See config/smoke.yaml for the small,
+# synthetic-fixture variant used by `pixi run smoke`.
+
+paths:
+  data_root: data
+  results_root: results
+  weights_root: data/weights
+  checkpoints_root: results/checkpoints
+
+# Bug fix (see README: Differences from upstream): `runwayml/stable-diffusion-v1-5`
+# was removed from HuggingFace. This mirror and revision are used everywhere
+# the notebooks loaded that id (outpainting/2D-imputation, 3D-imputation,
+# arbitrary inpainting, the pixel-diffusion decoder's scheduler/VAE-encoder).
+pretrained:
+  model_id: stable-diffusion-v1-5/stable-diffusion-v1-5
+  revision: 451f4fe16113bff5a5d2269ed5ad43b0592e9a14
+
+# Outpainting inference (Inference_Outpainting.ipynb) decodes with this VAE
+# rather than the SD1.5-bundled one; preserved as an observed upstream
+# train/inference inconsistency (see README), not corrected.
+outpainting_inference_vae:
+  model_id: stabilityai/sd-vae-ft-ema
+  revision: f04b2c4b98319346dad8c65879f680b1997b204a
+
+finetune:
+  sd2:
+    model_id: Manojb/stable-diffusion-2-1-base
+    revision: 0094d483a120f3f33dafbd187ea4aa60d10de75c
+    clip_vision_model_id: laion/CLIP-ViT-H-14-laion2B-s32B-b79K
+    clip_vision_revision: 1c2b8495b28150b8a4922ee1c8edee224c284c0c
+  fluxfill:
+    model_id: black-forest-labs/FLUX.1-Fill-dev
+    revision: 358293da0354175698b67ec8299acf928313a78a
+    lora_rank: 8
+
+# Bug fix: mask[:, x1:x2, y1:y2] on a [C,H,W] tensor (and the matching
+# torch.meshgrid default-'ij' latent mask) swap the bbox's x/y axes. The
+# published checkpoints were trained under this convention, so "upstream" is
+# the default; "xy" applies the bbox as (x1,y1,x2,y2) -> (width, height).
+mask_axis_convention: upstream
+
+outpainting_2d_imputation:
+  # Bug fix: Latent_Diffusion_Trainer.py opened a hardcoded, nonexistent
+  # val_data directory. This is the explicit, region-held-out split used
+  # instead (see morphe.datasets.stage1_dataset.split_by_region). Six real
+  # region images ship with this config (Assets/sample_regions); region_5 is
+  # held out.
+  split:
+    root: Assets/sample_regions
+    val_regions: [region_5]
+    seed: 0
+  train_batch_size: 16
+  val_batch_size: 4
+  train_masks_per_image: 100
+  val_masks_per_image: 20
+  lr: 2.0e-5
+  epochs: 10
+  patience: 5
+  checkpoint_dir: results/checkpoints/outpainting_2d_imputation
+
+  # Published weights: Hickey-Lab/MORPHE_CODEX_Outpainting. Only the three
+  # inference-relevant files are downloaded (see
+  # morphe.inference.checkpoints); the rest of that repository is optimizer/
+  # RNG state used only to resume training.
+  published_checkpoint:
+    repo: Hickey-Lab/MORPHE_CODEX_Outpainting
+    files:
+      - path: model.safetensors  # VAE (frozen; unchanged from the pretrained mirror above)
+        sha256: b4d2b5932bb4151e54e694fd31ccf51fca908223c9485bd56cd0e1d83ad94c49
+      - path: model_1.safetensors  # UNet
+        sha256: 5dc0ad32f3a50fe61be15de657dfd6df1b9c8b49d596f208e1b68bf570da0744
+      - path: model_2.safetensors  # CoordEncoder
+        sha256: a496880be0c67936b1ea8fed4859af74806fe59e491a67fa573ba3711740020f
+      - path: model_3.safetensors  # CondEncoder
+        sha256: c9106d3e76bc31df274644fbd0763c6396c902465e067eb5a7bcc167bd2caf2f
+    dest: data/weights/outpainting_2d_imputation
+
+  inference:
+    steps: 200
+    outpainting_crop_ratio: 0.97
+    outpainting_iterations: 4
+    imputation_2d_iterations: 6
+
+arbitrary_inpainting:
+  split:
+    root: data/arbitrary_inpainting_regions
+    val_regions: []
+    seed: 0
+  train_masks_per_image: 20
+  val_masks_per_image: 5
+  lr: 2.0e-5
+  epochs: 20
+  checkpoint_dir: results/checkpoints/arbitrary_inpainting
+
+imputation_3d:
+  train_dir: data/slice3d/train
+  val_dir: data/slice3d/val
+  cond_dim: 768
+  lr: 2.0e-5
+  epochs: 100
+  patience: 5
+  checkpoint_dir: results/checkpoints/imputation_3d
+  num_inference_steps: 200
+
+pixel_decoder:
+  train_index: data/pixel_decoder/train/index.jsonl
+  val_index: data/pixel_decoder/val/index.jsonl
+  batch_size: 4
+  lr: 1.0e-5
+  epochs: 30
+  patience: 5
+  checkpoint_dir: results/checkpoints/pixel_decoder
+  vis_dir: results/pixel_decoder_visualisations
+  num_inference_steps: 150
+
+embeddings:
+  gcn:
+    dataset_csv: data/cell_tables/dataset.csv
+    hidden_channels: 768
+    epochs: 40
+    lr: 1.0e-4
+    weight_decay: 1.0e-5
+    k_neighbors: 20
+    drop_cols:
+      - "Cell Type"
+      - unique_region
+      - donor
+      - array
+      - Xcorr
+      - Ycorr
+      - Tissue_location
+      - tissue
+      - region
+      - OLFM4
+      - FAP
+      - CD25
+      - CK7
+      - MUC6
+      - "Cell Type em"
+      - "Cell subtype"
+      - Neighborhood
+      - Neigh_sub
+      - Neighborhood_Ind
+      - NeighInd_sub
+      - Community
+      - "Major Community"
+      - "Tissue Segment"
+      - "Tissue Unit"
+      - CollIV
+  autoencoder:
+    epochs: 20
+    batch_size: 4096
+    lr: 1.0e-5
+    val_ratio: 0.1
+    alpha: 0.1
+    seed: 0
+    checkpoint_path: results/checkpoints/embeddings/autoencoder.pth
+  region_image_size: 1024
+
+evaluation:
+  # Recorded from the encoder-output range of one specific trained
+  # autoencoder (see morphe.embeddings.interpret_cellmap); a freshly trained
+  # checkpoint must record and use its own values.
+  z_min: [-69.761505, -75.65188, -77.16103]
+  z_max: [88.969406, 65.244896, 67.13518]
+  white_threshold: 245
+
+preprocessing:
+  # The upstream notebook's exact input (a pre-merged, machine-local CSV) is
+  # not part of the published Dryad release; see README for what to place
+  # here.
+  input_csv: data/preprocessing/conflict_cleaned_CODEX_HuBMAP_alldata_Dryad_merged.csv
+  output_csv: results/preprocessing/resolution_reduced.csv
+  original_dimensions: [9406, 9070]
+
+datasets:
+  codex_intestine:
+    url: https://datadryad.org/api/v2/datasets/doi%3A10.5061%2Fdryad.pk0p2ngrf/download
+    sha256: PLACEHOLDER_CODEX_SHA256
+    dest: data/shared/codex_intestine.zip
+
+compute:
+  omp_num_threads: 6
+  snakemake_cores: 6
+  nice: 19

@@ -1,0 +1,133 @@
+# Smoke config: the same rule graph as config.yaml, restricted to
+# `pixi run smoke`'s target (train_smoke_outpainting_2d_imputation), which
+# builds tiny, randomly initialised diffusers models directly (no download,
+# no GPU) and runs a handful of real training steps on the six sample region
+# images shipped in Assets/sample_regions. Finishes in seconds on CPU.
+
+mode: smoke
+
+paths:
+  data_root: data
+  results_root: results
+  weights_root: data/weights
+  checkpoints_root: results/checkpoints
+
+pretrained:
+  model_id: stable-diffusion-v1-5/stable-diffusion-v1-5
+  revision: 451f4fe16113bff5a5d2269ed5ad43b0592e9a14
+
+outpainting_inference_vae:
+  model_id: stabilityai/sd-vae-ft-ema
+  revision: f04b2c4b98319346dad8c65879f680b1997b204a
+
+finetune:
+  sd2:
+    model_id: Manojb/stable-diffusion-2-1-base
+    revision: 0094d483a120f3f33dafbd187ea4aa60d10de75c
+    clip_vision_model_id: laion/CLIP-ViT-H-14-laion2B-s32B-b79K
+    clip_vision_revision: 1c2b8495b28150b8a4922ee1c8edee224c284c0c
+  fluxfill:
+    model_id: black-forest-labs/FLUX.1-Fill-dev
+    revision: 358293da0354175698b67ec8299acf928313a78a
+    lora_rank: 8
+
+mask_axis_convention: upstream
+
+smoke:
+  steps: 3
+  img_size: 64
+
+outpainting_2d_imputation:
+  split:
+    root: results/smoke/fixture_regions
+    val_regions: [region_5]
+    seed: 0
+  train_batch_size: 2
+  val_batch_size: 2
+  train_masks_per_image: 2
+  val_masks_per_image: 2
+  lr: 2.0e-5
+  epochs: 1
+  patience: 1
+  checkpoint_dir: results/smoke/checkpoints/outpainting_2d_imputation
+  published_checkpoint:
+    repo: Hickey-Lab/MORPHE_CODEX_Outpainting
+    files: []
+    dest: data/weights/outpainting_2d_imputation
+  inference:
+    steps: 2
+    outpainting_crop_ratio: 0.97
+    outpainting_iterations: 1
+    imputation_2d_iterations: 1
+
+arbitrary_inpainting:
+  split:
+    root: results/smoke/fixture_regions
+    val_regions: [region_5]
+    seed: 0
+  train_masks_per_image: 2
+  val_masks_per_image: 2
+  lr: 2.0e-5
+  epochs: 1
+  checkpoint_dir: results/smoke/checkpoints/arbitrary_inpainting
+
+imputation_3d:
+  train_dir: data/smoke/slice3d/train
+  val_dir: data/smoke/slice3d/val
+  cond_dim: 32
+  lr: 2.0e-5
+  epochs: 1
+  patience: 1
+  checkpoint_dir: results/smoke/checkpoints/imputation_3d
+  num_inference_steps: 2
+
+pixel_decoder:
+  train_index: data/smoke/pixel_decoder/train/index.jsonl
+  val_index: data/smoke/pixel_decoder/val/index.jsonl
+  batch_size: 2
+  lr: 1.0e-5
+  epochs: 1
+  patience: 1
+  checkpoint_dir: results/smoke/checkpoints/pixel_decoder
+  vis_dir: results/smoke/pixel_decoder_visualisations
+  num_inference_steps: 2
+
+embeddings:
+  gcn:
+    dataset_csv: data/smoke/cell_tables/dataset.csv
+    hidden_channels: 8
+    epochs: 1
+    lr: 1.0e-4
+    weight_decay: 1.0e-5
+    k_neighbors: 2
+    drop_cols: ["Cell Type", unique_region, x, y]
+  autoencoder:
+    epochs: 1
+    batch_size: 8
+    lr: 1.0e-5
+    val_ratio: 0.2
+    alpha: 0.1
+    seed: 0
+    checkpoint_path: results/smoke/checkpoints/embeddings/autoencoder.pth
+  region_image_size: 32
+
+evaluation:
+  z_min: [-69.761505, -75.65188, -77.16103]
+  z_max: [88.969406, 65.244896, 67.13518]
+  white_threshold: 245
+
+preprocessing:
+  input_csv: data/smoke/preprocessing/synthetic.csv
+  output_csv: results/smoke/preprocessing/reduced.csv
+  original_dimensions: [64, 64]
+
+datasets:
+  codex_intestine:
+    url: https://datadryad.org/api/v2/datasets/doi%3A10.5061%2Fdryad.pk0p2ngrf/download
+    sha256: PLACEHOLDER_CODEX_SHA256
+    dest: data/shared/codex_intestine.zip
+
+compute:
+  omp_num_threads: 2
+  snakemake_cores: 2
+  nice: 19
